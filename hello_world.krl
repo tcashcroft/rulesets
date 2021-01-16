@@ -15,7 +15,7 @@ ruleset hello_world {
         }
     }
 
-    rule hello_world {
+    rulez hello_world {
         select when echo hello
         send_directive("say", {"something": "Hello World"})
     }
