@@ -21,7 +21,7 @@ ruleset hello_world {
     rule hello_monkey {
         select when echo monkey
 
-        output = hello (name || "Monkey")
+        output = hello name || "Hello Monkey"
         send_directive("echo", {"value": output})
     }
 
