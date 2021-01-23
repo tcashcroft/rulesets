@@ -29,4 +29,12 @@ ruleset hello_world {
 
     }
 
+   rule hello_monkey2 {
+      select when echo monkey2
+      pre {
+        name_value = event:attrs{"name"} || "Monkey";
+     }
+     send_directive("echo", {"body", name.sprintf("Hello %s"})
+   }
+
 }
