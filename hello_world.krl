@@ -20,6 +20,6 @@ ruleset hello_world {
     }
     rule hello_monkey {
         select when echo monkey
-        send_directive("say", {"Hello Monkey"})
+        send_directive("say", hello)
     }
 }
