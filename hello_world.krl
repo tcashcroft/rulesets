@@ -18,11 +18,16 @@ ruleset hello_world {
         select when echo hello
         send_directive("say", {"something": "Hello World"})
     }
+
     rule hello_monkey {
         select when echo monkey
 
-        name.isnull() => send_directive("echo", {"body": "Hello Monkey"}) | send_directive("echo", {"body":"Hello " + name})
-        
+        pre {
+          name = event:attr("name").isnull() => "Monkey" | event:attr("name")
+          name.klog("Saying hello to: ")
+        }
+        send_directive("echo", {"body": "Hello %s".sprintf(name)})
+
     }
 
 }
