@@ -25,7 +25,7 @@ ruleset hello_world {
         pre {
           name = (event:attrs{"name"}.isnull() => "Monkey" | event:attrs{"name"}).klog("Saying hello to: ");
         }
-        send_directive("echo", {"body": "Hello %s".sprintf(name)})
+        send_directive("echo", {"body": name.sprintf("Hello %s")})
 
     }
 
