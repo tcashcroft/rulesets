@@ -21,13 +21,8 @@ ruleset hello_world {
     rule hello_monkey {
         select when echo monkey
 
-        output = hello name || "Hello Monkey"
-        send_directive("echo", {"value": output})
+        name.isnull() => send_directive("echo", {"body": "Hello Monkey"}) | send_directive("echo", {"body":"Hello " + name})
+        
     }
 
-    rule hello_monkey2 {
-       select when echo monkey2
-
-       if name.isnull() => send_directive("echo", {"value": "Hello Monkey2"}) | send_directive("echo", {"value": hello name})
-    }
 }
