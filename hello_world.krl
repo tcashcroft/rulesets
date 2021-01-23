@@ -34,7 +34,7 @@ ruleset hello_world {
       pre {
         name_value = event:attrs{"name"} || "Monkey";
      }
-     send_directive("echo", {"body": name.sprintf("Hello %s"})
+     send_directive("echo", {"body": name.sprintf("Hello %s")})
    }
 
 }
