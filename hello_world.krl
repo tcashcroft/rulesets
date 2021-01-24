@@ -26,7 +26,7 @@ ruleset hello_world {
         pre {
           name = (event:attrs{"name"}.isnull() => "Monkey" | event:attrs{"name"}).klog("Saying hello to: ");
         }
-        send_directive("echo", {"body": name.sprintf("Hello %s")}).klog("Did this log?")
+        send_directive("echo", {"body": name.sprintf("Hello %s")})
 
     }
 
@@ -35,7 +35,7 @@ ruleset hello_world {
       pre {
         name_value = (event:attrs{"name"} || "Monkey").klog("Saving hello to (v2): ");
      }
-     send_directive("echo", {"body": name_value.sprintf("Hello %s")}).klog("Did this log?")
+     send_directive("echo", {"body": name_value.sprintf("Hello %s")})
    }
 
 }
