@@ -32,7 +32,7 @@ ruleset hello_world {
    rule hello_monkey2 {
       select when echo monkey2
       pre {
-        name_value = event:attrs{"name"} || "Monkey";
+        name_value = (event:attrs{"name"} || "Monkey").klog("Saving hello to (v2): ");
      }
      send_directive("echo", {"body": name_value.sprintf("Hello %s")})
    }
