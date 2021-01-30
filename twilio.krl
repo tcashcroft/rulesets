@@ -7,13 +7,20 @@ ruleset com.tcashcroft.twilio {
       apiKey = ""
       sessionId = "" 
       phoneNumber = ""
-    shares sendMessage
+    provides getMessages, sendMessage
   }
   global {
-    baseUrl = "https://api.twilio.com"
-    sendMessage = defaction(message, recipientNumber) {
-      response = http:post(<<#{baseUrl}/2010-04-01/Accounts/#{sessionId}/Messages.json>>, form = {"To": recipientNumber, "From": phoneNumber, "Body": message}, auth = {"username": sessionId, "password": apiKey})
-      response.decode()
-    }
+     baseUrl = "https://api.twilio.com/2010-04-01"
+     authString = {"username":sessionId, "password":apiKey}
+
+     getMessages = function() {
+       http:get(<<#{baseUrl}/Accounts/#{sessionId}/Messages.json>>, auth=authString){"content"}.decode().klog("get Messages: ")
+     }
+
+     sendMessage = defaction(targetPhoneNumber, message) {
+       formString = {"To": targetPhoneNumber, "From": phoneNumber, "Body": message}.klog("Form string:")
+       http:post(<<#{baseUrl}/Accounts/#{sessionId}/Messages.json>>, form=formString, auth=authString) setting(response)
+       return response{"content"}.decode()
+     }
   }
 }
