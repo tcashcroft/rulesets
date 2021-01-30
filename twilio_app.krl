@@ -11,8 +11,8 @@ ruleset twilio_app {
 
   global {
 
-    getMessages = function() {
-      sdk:getMessages()
+    getMessages = function(filters) {
+      filters.isnull() => sdk:getMessages() | sdk:getMessagesFiltered(filters)
     }
 
   }
@@ -27,9 +27,7 @@ ruleset twilio_app {
       valid = (messageLen != 0 && targetPhoneNumberLen >= 10).klog("valid?: ")
     }
 
-    if valid then sdk:sendMessage(targetPhoneNumber, message) setting(response) {
-      send_directive("sendMessage", {"response": response})
-    }
+    if valid then sdk:sendMessage(targetPhoneNumber, message) setting(response)
 
     fired {
       raise send event "sent" attributes event:attrs

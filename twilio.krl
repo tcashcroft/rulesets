@@ -7,7 +7,7 @@ ruleset com.tcashcroft.twilio {
       apiKey = ""
       sessionId = "" 
       phoneNumber = ""
-    provides getMessages, sendMessage
+    provides getMessages, getMessagesFiltered, sendMessage
   }
   global {
      baseUrl = "https://api.twilio.com/2010-04-01"
@@ -15,6 +15,10 @@ ruleset com.tcashcroft.twilio {
 
      getMessages = function() {
        http:get(<<#{baseUrl}/Accounts/#{sessionId}/Messages.json>>, auth=authString){"content"}.decode().klog("get Messages: ")
+     }
+
+     getMessagesFiltered = function(filters) {
+       http:get(<<#{baseUrl}/Accounts/#{sessionId}/Messages.json>>, auth=authString, qs=filters){"content"}.decode().klog("get Messages: ")
      }
 
      sendMessage = defaction(targetPhoneNumber, message) {
