@@ -39,7 +39,7 @@ ruleset com.tcashcroft.wovyn_base {
     if exceed_threshold then send_directive("wovyn", {"body": "Threshold was exceeded"})
 
     fired {
-      raise wovyn event "threshold_violation" attributes {"temperature": event:attrs{"temperature"}, "timestamp": event:time, "threshold": temperature_threshold}
+      raise wovyn event "threshold_violation" attributes {"temperature": event:attrs{"temperature"}, "timestamp": event:attrs{"timestamp"}, "threshold": temperature_threshold}
     }
     
   }
