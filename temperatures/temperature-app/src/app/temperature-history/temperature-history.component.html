@@ -1,0 +1,14 @@
+<div class="col-md-6">
+	<div class="row container">
+		<h2>Temperatures</h2>
+	</div>
+	<div class="row container" *ngIf="currentTemperature">
+                <h4>Current Temperature: {{currentTemperature.temperature}}</h4>
+	</div>
+	<div class="row container">
+		<div class="temperature-container col-md-12" *ngFor="let temp of history">
+			<span>Time: {{temp.timestamp | date:'yyyy-MM-dd hh:mm:ss'}}</span> Temperature: {{temp.temperature}}
+		</div>
+	</div>
+</div>
+

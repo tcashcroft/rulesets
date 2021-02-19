@@ -1,0 +1,10 @@
+<div class="col-md-6">
+	<div class="row">
+		<h2>Threshold Violations</h2>
+	</div>
+	<div class="row">
+		<div class="violation-container col-md-12" *ngFor="let violation of violations">
+			<span>Time: {{violation.timestamp | date:'yyyy-MM-dd hh:mm:ss'}}</span> Temperature: {{violation.temperature}}	Threshold: {{violation.threshold}} 
+		</div>
+        </div>
+</div>

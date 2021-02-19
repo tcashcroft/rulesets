@@ -4,11 +4,16 @@ ruleset com.tcashcroft.temperature_store {
   meta {
     name "Temperature Store"
     logging on
-    shares temperatures, threshold_violations, inrange_temperatures
+    shares temperatures, threshold_violations, inrange_temperatures, current_temperature
     provides temperatures, threshold_violations, inrange_temperatures
   }
 
   global {
+
+    current_temperature = function() {
+      ent:current_temperature
+    }
+
     temperatures = function() {
       ent:temperatures
     } 
@@ -39,6 +44,7 @@ ruleset com.tcashcroft.temperature_store {
     always {
       ent:temperatures := []
       ent:violations := []
+      ent:current_temperature := null
       raise temperature_store event "initialized"
     }
   }
@@ -48,6 +54,7 @@ ruleset com.tcashcroft.temperature_store {
 
     always {
       ent:temperatures := ent:temperatures.append({"temperature": event:attrs{"temperature"}, "timestamp": event:attrs{"timestamp"}}).klog("Adding temperature to store")
+      ent:current_temperature := {"temperature": event:attrs{"temperature"}, "timestamp": event:attrs{"timestamp"}}
       raise temperature_store event "received"
     }
   }
