@@ -4,16 +4,30 @@ ruleset com.tcashcroft.wovyn_base {
   meta {
     name "Wovyn"
     logging on
+    shares current_threshold, current_target_phone_number
     use module com.tcashcroft.twilio alias sdk
     with
       apiKey = meta:rulesetConfig{"apiKey"}
       sessionId = meta:rulesetConfig{"sessionId"}
       phoneNumber = meta:rulesetConfig{"phoneNumber"}
-      targetPhoneNumber = meta:rulesetConfig{"targetPhoneNumber"}
   }
 
   global {
-    temperature_threshold = 78
+    current_threshold = function() {
+      ent:temperature_threshold
+    }
+
+    current_target_phone_number = function() {
+      ent:targetPhoneNumber
+    }
+  }
+
+  rule init {
+    select when wrangler ruleset_installed where event:attrs{"rids"} >< meta:rid
+    always {
+      ent:temperature_threshold := 78
+      ent:targetPhoneNumber := meta:rulesetConfig{"targetPhoneNumber"}
+    }
   }
 
   rule process_heartbeat {
@@ -34,12 +48,12 @@ ruleset com.tcashcroft.wovyn_base {
   rule find_high_temps {
     select when wovyn new_temperature_reading
     pre {
-      exceed_threshold = event:attrs{"temperature"} > temperature_threshold
+      exceed_threshold = event:attrs{"temperature"} > ent:temperature_threshold
     }
     if exceed_threshold then send_directive("wovyn", {"body": "Threshold was exceeded"})
 
     fired {
-      raise wovyn event "threshold_violation" attributes {"temperature": event:attrs{"temperature"}, "timestamp": event:attrs{"timestamp"}, "threshold": temperature_threshold}
+      raise wovyn event "threshold_violation" attributes {"temperature": event:attrs{"temperature"}, "timestamp": event:attrs{"timestamp"}, "threshold": ent:temperature_threshold}
     }
     
   }
@@ -49,16 +63,28 @@ ruleset com.tcashcroft.wovyn_base {
     pre {
       message = "Temperature threshold exceeded. Threshold: " + event:attrs{"threshold"} + " Temperature: " + event:attrs{"temperature"}
       messageLen = message.length()
-      targetPhoneNumberLen = meta:rulesetConfig{"targetPhoneNumber"}.length().klog("Phone Number Length: ")
+      targetPhoneNumberLen = ent:targetPhoneNumber.length().klog("Phone Number Length: ")
       valid = (messageLen != 0 && targetPhoneNumberLen >= 10).klog("valid?: ")
     }
 
-    if valid then sdk:sendMessage(meta:rulesetConfig{"targetPhoneNumber"}, message) setting(response)
+    if valid then sdk:sendMessage(ent:targetPhoneNumber, message) setting(response)
 
     fired {
       raise send event "sent" attributes event:attrs
     }
 
+  }
+
+  rule updateProfile {
+    select when sensor profile_update_complete
+    pre {
+      newThreshold = event:attrs{"threshold"}
+    }
+    noop()
+    always {
+      ent:targetPhoneNumber := event:attrs{"targetPhoneNumber"}
+      ent:temperature_threshold := newThreshold
+    }
   }
 
 }

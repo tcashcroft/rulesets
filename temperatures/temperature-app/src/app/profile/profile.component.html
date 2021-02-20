@@ -1,1 +1,27 @@
-<p>profile works!</p>
+<app-top-bar></app-top-bar>
+<div class="container" *ngIf="profile">
+  <h2>Profile</h2>
+  <div>
+    <label>Location:
+      <input [(ngModel)]="profile.location" placeholder="location"/>
+    </label>
+  </div>
+  <div>
+    <label>Name:
+      <input [(ngModel)]="profile.name" placeholder="name"/>
+    </label>
+  </div>
+  <div>
+    <label>Temperature Threshold:
+      <input [(ngModel)]="profile.threshold" placeholder="Threshold"/>
+    </label>
+  </div>
+  <div>
+    <label>Notification Number:
+      <input [(ngModel)]="profile.targetPhoneNumber" placeholder="Phone Number"/>
+    </label>
+  </div>
+  <div>
+    <button class="btn btn-warning" (click)="updateProfile()">Update</button>
+  </div>
+</div>

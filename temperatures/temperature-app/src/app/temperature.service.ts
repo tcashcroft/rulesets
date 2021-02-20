@@ -10,13 +10,12 @@ import { map, switchMap } from 'rxjs/operators';
 })
 export class TemperatureService {
 
-  private eci = 'ckknjkyfp003a2eqr6he2dqay';
+  private eci = 'ckld69zv4000j1ei074l78t6z';
   private rid = 'com.tcashcroft.temperature_store';
   private temperaturesFunction = 'temperatures';
   private currentTemperatureFunction = 'current_temperature';
-  // private temperaturesUrl = ''.concat('http://localhost:3000/sky/cloud/', this.eci, '/', this.rid, '/', this.temperaturesFunction); 
-  private temperaturesUrl = ''.concat('http://localhost:8010/proxy/sky/cloud/', this.eci, '/', this.rid, '/', this.temperaturesFunction); 
-  private currentTemperatureUrl = ''.concat('http://localhost:8010/proxy/sky/cloud/', this.eci, '/', this.rid, '/', this.currentTemperatureFunction); 
+  private temperaturesUrl = ''.concat('http://localhost:3000/sky/cloud/', this.eci, '/', this.rid, '/', this.temperaturesFunction); 
+  private currentTemperatureUrl = ''.concat('http://localhost:3000/sky/cloud/', this.eci, '/', this.rid, '/', this.currentTemperatureFunction); 
 
   private currentTemperature: Observable<Temperature>;
   private temperatures: Observable<Temperature[]>;

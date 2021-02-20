@@ -10,10 +10,10 @@ import { switchMap } from 'rxjs/operators';
 })
 export class ViolationService {
 
-  private eci = 'ckknjkyfp003a2eqr6he2dqay';
+  private eci = 'ckld69zv4000j1ei074l78t6z';
   private rid = 'com.tcashcroft.temperature_store';
   private function = 'threshold_violations';
-  private violationsUrl = ''.concat('http://localhost:8010/proxy/sky/cloud/', this.eci, '/', this.rid, '/', this.function);
+  private violationsUrl = ''.concat('http://localhost:3000/sky/cloud/', this.eci, '/', this.rid, '/', this.function);
 
   private violations: Observable<ThresholdViolation[]>;
 
