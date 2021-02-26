@@ -76,4 +76,44 @@ ruleset com.tcashcroft.sensor_profile {
       };
     }
   }
+
+  // added for lab6, attempting to maintain backwards compatibility with lab5
+  rule prcoess_full_profile_update {
+    select when sensor_profile full_profile_updated
+    pre {
+      apiKey = event:attrs{"apiKey"}
+      sessionId = event:attrs{"sessionId"}
+      phoneNumber = event:attrs{"phoneNumber"}
+      targetPhoneNumber = event:attrs{"targetPhoneNumber"}
+      name = event:attrs{"name"}
+      location = event:attrs{"location"}
+      threshold = event:attrs{"threshold"}
+    }
+    always {
+      raise sensor event "profile_update_complete" attributes {
+        "apiKey" : apiKey,
+        "sessionId" : sessionId,
+        "phoneNumber" : phoneNumber,
+        "targetPhoneNumber" : targetPhoneNumber,
+        "location" : location,
+        "threshold" : threshold,
+        "name" : name
+      };
+      ent:current_profile := {
+        "targetPhoneNumber" : targetPhoneNumber,
+        "location" : location,
+        "threshold" : threshold,
+        "name" : name
+      };
+      ent:full_profile := {
+        "apiKey" : apiKey,
+        "sessionId" : sessionId,
+        "phoneNumber" : phoneNumber,
+        "targetPhoneNumber" : targetPhoneNumber,
+        "location" : location,
+        "threshold" : threshold,
+        "name" : name
+      };
+    }
+  } 
 }
