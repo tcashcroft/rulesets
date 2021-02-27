@@ -116,4 +116,11 @@ ruleset com.tcashcroft.sensor_profile {
       };
     }
   } 
+  
+  rule delete {
+    select when wrangler child_deletion_request
+    always {
+      raise wrangler event ready_for_deletion
+    }
+  }
 }
