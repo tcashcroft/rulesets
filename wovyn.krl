@@ -4,7 +4,7 @@ ruleset com.tcashcroft.wovyn_base {
   meta {
     name "Wovyn"
     logging on
-    shares current_threshold, current_target_phone_number
+    shares current_threshold, current_target_phone_number, twilio_config
     use module com.tcashcroft.twilio alias sdk
     with
       apiKey = meta:rulesetConfig{"apiKey"}
@@ -19,6 +19,11 @@ ruleset com.tcashcroft.wovyn_base {
 
     current_target_phone_number = function() {
       ent:targetPhoneNumber
+    }
+
+    twilio_config = function() {
+      config = sdk:getConfiguration() 
+      config || {"message": "error getting twilio config"}
     }
   }
 
@@ -82,6 +87,7 @@ ruleset com.tcashcroft.wovyn_base {
     }
     noop()
     always {
+      raise twilio event "update" attributes {"apiKey": event:attrs{"apiKey"}, "sessionId": event:attrs{"sessionId"}, "phoneNumber": event:attrs{"phoneNumber"}}
       ent:targetPhoneNumber := event:attrs{"targetPhoneNumber"}
       ent:temperature_threshold := newThreshold
     }
