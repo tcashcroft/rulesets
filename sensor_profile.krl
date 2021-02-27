@@ -3,7 +3,7 @@ ruleset com.tcashcroft.sensor_profile {
   meta {
     name "Sensor Profile"
     logging on
-    shares current_profile
+    shares current_profile, current_full_profile
     use module com.tcashcroft.twilio alias twilio
     with 
       apiKey = meta:rulesetConfig{"apiKey"}
@@ -16,6 +16,10 @@ ruleset com.tcashcroft.sensor_profile {
      
     current_profile = function() {
       ent:current_profile
+    }
+   
+    current_full_profile = function() {
+      ent:full_profile
     }
   }
 
