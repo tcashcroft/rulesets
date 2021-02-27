@@ -37,9 +37,9 @@ ruleset com.tcashcroft.twilio {
   rule init {
     select when wrangler ruleset_installed where event:attrs{"rids"} >< meta:rid
     always {
-      ent:apiKey := apiKey
-      ent:sessionId := sessionId
-      ent:phoneNumber := phoneNumber
+      ent:apiKey := apiKey || ""
+      ent:sessionId := sessionId || ""
+      ent:phoneNumber := phoneNumber || ""
     }
   }
 
