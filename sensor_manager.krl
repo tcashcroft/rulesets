@@ -6,7 +6,6 @@ ruleset com.tcashcroft.manage_sensors {
     logging on
     use module io.picolabs.wrangler alias wrangler
     shares sensors, temperatures, profiles 
-
   }
 
   global {
@@ -28,6 +27,15 @@ ruleset com.tcashcroft.manage_sensors {
       profiles || {}
     }
 
+    getTwilioConfig = function() {
+      twilio_config = {
+        "apiKey" : ent:apiKey,
+        "sessionId": ent:sessionId,
+        "phoneNumber": ent:phoneNumber
+      }
+      twilio_config || {}
+    }
+
   }
 
   rule init {
@@ -45,22 +53,19 @@ ruleset com.tcashcroft.manage_sensors {
     }
   }
 
-  //rule temp {
-  //  select when sensor_manager initialized
-  //  always {
-  //    raise sensor event "new_sensor"
-  //  }
-  //}
-
   rule create_managed_sensor {
     select when sensor new_sensor
     pre {
       name_to_use = event:attrs{"name"} || nameFromID(ent:counter)
+      is_valid = ent:sensors >< name_to_use
     }
-    always {
+    if not is_valid then send_directive("Creating child", {"name": name_to_use})
+    fired {
       raise wrangler event "new_child_request" attributes {"name": name_to_use, "backgroundColor": "#000000"}
       ent:counter := ent:counter + 1
-    }  
+    } else {  
+      raise sensor event "child_exists" attributes {"existing_name" : name_to_use}
+    }
   }
   
   rule store_new_sensor {
@@ -77,7 +82,7 @@ ruleset com.tcashcroft.manage_sensors {
     }
   }
 
-  rule add_twilio_base_ruleset {
+  rule install_twilio {
     select when sensor stored
     pre {
       sensor_name = event:attrs{"new_sensor_name"}
@@ -88,9 +93,10 @@ ruleset com.tcashcroft.manage_sensors {
       "domain": "wrangler",
       "type": "install_ruleset_request",
       "attrs": {
-        "absoluteURL": "https://raw.githubusercontent.com/tcashcroft/rulesets/master/twilio.krl",
+        //"absoluteURL": "https://raw.githubusercontent.com/tcashcroft/rulesets/lab6/twilio.krl",
+        "absoluteURL": "file:///home/tashcrof/workspace/krl/rulesets/twilio.krl",
         "rid": "twilio",
-        "config": {},
+        "config": getTwilioConfig(),
         "name": sensor_name
       }
     })
@@ -112,9 +118,10 @@ ruleset com.tcashcroft.manage_sensors {
       "domain": "wrangler",
       "type": "install_ruleset_request",
       "attrs": {
-        "absoluteURL": "https://raw.githubusercontent.com/tcashcroft/rulesets/master/wovyn.krl",
+        //"absoluteURL": "https://raw.githubusercontent.com/tcashcroft/rulesets/lab6/wovyn.krl",
+        "absoluteURL": "file:///home/tashcrof/workspace/krl/rulesets/wovyn.krl",
         "rid": "wovyn",
-        "config": {},
+        "config": getTwilioConfig(),
         "name": sensor_name
       }
     })
@@ -141,7 +148,7 @@ ruleset com.tcashcroft.manage_sensors {
         //"absoluteURL": "https://raw.githubusercontent.com/tcashcroft/rulesets/lab6/sensor_profile.krl",
         "absoluteURL": "file:///home/tashcrof/workspace/krl/rulesets/sensor_profile.krl",
         "rid": "sensor_profile",
-        "config": {},
+        "config": getTwilioConfig(),
         "name": sensor_name
       }
     })
@@ -164,7 +171,8 @@ ruleset com.tcashcroft.manage_sensors {
       "domain": "wrangler",
       "type": "install_ruleset_request",
       "attrs": {
-        "absoluteURL": "https://raw.githubusercontent.com/tcashcroft/rulesets/master/temperature_store.krl",
+        //"absoluteURL": "https://raw.githubusercontent.com/tcashcroft/rulesets/lab6/temperature_store.krl",
+        "absoluteURL": "file:///home/tashcrof/workspace/krl/rulesets/temperature_store.krl",
         "rid": "temperature_store",
         "config": {},
         "name": sensor_name
@@ -206,9 +214,9 @@ ruleset com.tcashcroft.manage_sensors {
   rule update_profile {
     select when sensor profile_update_requested
     pre {
-      apiKey = event:attrs{"apiKey"} || ent:apiKey
-      sessionId = event:attrs{"sessionId"} || ent:sessionId
-      phoneNumber = event:attrs{"phoneNumber"} || ent:phoneNumber
+      apiKey = ent:apiKey
+      sessionId = ent:sessionId
+      phoneNumber = ent:phoneNumber
       targetPhoneNumber = event:attrs{"targetPhoneNumber"} || ent:targetPhoneNumber
       name = event:attrs{"name"} || event:attrs{"sensorName"} 
       location = event:attrs{"location"} || ent:location
@@ -238,9 +246,9 @@ ruleset com.tcashcroft.manage_sensors {
   rule install_default_profile {
     select when sensor wovyn_emitter_installed
     pre {
-      sessionId = event:attrs{"sessionId"} || ent:sessionId
-      apiKey = event:attrs{"apiKey"} || ent:apiKey
-      phoneNumber = event:attrs{"phoneNumber"} || ent:phoneNumber
+      sessionId = ent:sessionId
+      apiKey = ent:apiKey
+      phoneNumber = ent:phoneNumber
       threshold = event:attrs{"threshold"} || ent:threshold
       name = event:attrs{"name"} || event:attrs{"new_sensor_name"} || "Sensor -1"       
       targetPhoneNumber = event:attrs{"targetPhoneNumber"} || ent:targetPhoneNumber
@@ -255,7 +263,7 @@ ruleset com.tcashcroft.manage_sensors {
         "name": name,
         "sensorName": name,
         "location": location,
-        "threshold": threshold
+        "threshold": threshold,
       }
     }
   }
