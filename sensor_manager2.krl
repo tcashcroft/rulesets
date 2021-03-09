@@ -292,12 +292,13 @@ ruleset com.tcashcroft.manage_sensors {
 
   rule auto_accept_sensor_subscription {
     select when wrangler inbound_pending_subscription_added
-      // sensor_name re#(.+)#
+      sensor_name re#(.+)#
     pre {
       my_role = event:attrs{"Rx_role"}.klog("my role: ")
       their_role = event:attrs{"Tx_role"}.klog("their role: ")
       sensor_name = event:attrs{"sensor_name"}.klog("sensor name: ")
       name_is_available = not (ent:subscribed_sensors >< sensor_name)
+      temp = event:attrs.put("temp", "temp").klog("Subscription Event Attrs")
     }
     if my_role == "manager" && their_role == "sensor" && name_is_available then noop()
     fired {
