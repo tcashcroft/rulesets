@@ -81,7 +81,7 @@ ruleset com.tcashcroft.sensor_child_base {
       manager_name = manager_name(ent:counter)
       ent:counter := ent:counter + 1
       ent:managers{manager_name} := {
-        "subscriptionId": event:attrs{"subscriptionId"},
+        "subscriptionId": event:attrs{"Id"},
         "subscriptionTx": event:attrs{"Tx"},
         "txHost": event:attrs{"Tx_host"}
       }
