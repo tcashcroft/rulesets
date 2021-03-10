@@ -83,7 +83,7 @@ ruleset com.tcashcroft.sensor_child_base {
       ent:managers{manager_name} := {
         "subscriptionId": event:attrs{"Id"},
         "subscriptionTx": event:attrs{"Tx"},
-        "txHost": event:attrs{"Tx_host"}
+        "txHost": event:attrs{"bus"}.get("Tx_host")
       }
     }
   }
