@@ -304,7 +304,8 @@ ruleset com.tcashcroft.manage_sensors {
     }
     if my_role == "manager" && their_role == "sensor" && name_is_available then noop()
     fired {
-      raise wrangler event "pending_subscription_approval" attributes event:attrs
+      // raise wrangler event "pending_subscription_approval" attributes event:attrs
+      raise wrangler event "pending_subscription_approval" attributes {"Id": event:attrs{"Id"}}
       ent:subscribed_sensors{sensor_name} := {
         "subscriptionTx" : event:attrs{"Tx"},
         "subscriptionId" : event:attrs{"Id"},
