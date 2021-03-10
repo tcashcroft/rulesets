@@ -116,7 +116,7 @@ ruleset com.tcashcroft.sensor_child_base {
       "domain": "wovyn",
       "type": "threshold_violation", 
       "attrs": violation
-    }) 
+    }, ent:managers{manager_name}.get("txHost")) 
     fired {
       raise sensor_child_base event "threshold_violation" attributes {"violation": violation, "manager_names": remaining_managers}
     } else {
