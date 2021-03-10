@@ -6,7 +6,27 @@ ruleset com.tcashcroft.sensor_child_base {
   }
 
   global {
+    manager_name = function(id) {
+       "Manager " + id
+    }
+    
+    raise_event = function(eci, attrs, host){
+      event:send({
+        "eci": eci,
+        "eid": "threshold_violation",
+        "domain": "wovyn",
+        "type": "threshold_violation",
+        "attrs": attrs
+      }, host)
+    }
+  }
 
+  rule init {
+    select when wrangler ruleset_installed where event:attrs{"rids"} >< meta:rid
+    always {
+      ent:managers := {}
+      ent:counter := 1
+    }
   }
 
   rule delete {
@@ -47,7 +67,55 @@ ruleset com.tcashcroft.sensor_child_base {
     }
     always {
       raise wrangler event "subscription" attributes subscription_attrs
-      // raise sensor_base event "subscribed_to_manager" attributes event:attrs
+    }
+  }
+
+  rule store_subscription {
+    select when wrangler subscription_added
+    always {
+      manager_name = manager_name(ent:counter)
+      ent:counter := ent:counter + 1
+      ent:managers{manager_name} := {
+        "subscriptionId": event:attrs{"subscriptionId"},
+        "subscriptionTx": event:attrs{"Tx"},
+        "txHost": event:attrs{"Tx_host"}
+      }
+    }
+  }
+
+  rule send_threshold_violation_to_all_managers {
+    select when wovyn threshold_violation
+    pre {
+      violation = event:attrs
+    }
+    always {
+      manager_names = ent:managers.keys()
+      raise sensor_child_base event "threshold_violation" attributes {"violation": violation, "manager_names": manager_names}
+    }
+  }
+
+  rule send_threshold_violation_to_manager {
+    select when sensor_child_base threshold_violation
+    pre {
+      managers = event:attrs{"manager_names"}
+      managers_len = managers.length().klog("Managers Length: ")
+
+      manager_name = managers.head().klog("Manager Name: ")
+      remaining_managers = managers.slice(1, managers.length())
+      manager_exists = (ent:managers >< manager_name).klog("Manager Exists: ")
+      violation = event:attrs{"violation"}
+    }
+    if managers_len > 0 && manager_exists then event:send({
+      "eci": ent:managers{manager_name}.get("subscriptionTx"),
+      "eid": "threshold_violation",
+      "domain": "wovyn",
+      "type": "threshold_violation", 
+      "attrs": violation
+    }) 
+    fired {
+      raise sensor_child_base event "threshold_violation" attributes {"violation": violation, "manager_names": remaining_managers}
+    } else {
+      raise sensor_child_base event "send_threshold_violation_to_manager_not_sent" attributes event:attrs
     }
   }
 }

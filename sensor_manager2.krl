@@ -6,7 +6,12 @@ ruleset com.tcashcroft.manage_sensors {
     logging on
     use module io.picolabs.wrangler alias wrangler
     use module io.picolabs.subscription alias subscription
-    shares subscribed_sensors, children, children_temperatures, subscribed_sensors_temperatures, children_profiles, get_wellKnown_eci 
+    use module com.tcashcroft.twilio alias twilioSdk
+    with
+      apiKey = meta:rulesetConfig{"apiKey"}
+      sessionId = meta:rulesetConfig{"sessionId"}
+      phoneNumber = meta:rulesetConfig{"phoneNumber"}
+    shares subscribed_sensors, children, children_temperatures, subscribed_sensors_temperatures, children_profiles, subscribed_sensors_profiles, get_wellKnown_eci 
   }
 
   global {
@@ -28,13 +33,24 @@ ruleset com.tcashcroft.manage_sensors {
     }
 
     subscribed_sensors_temperatures = function() {
-      temperatures = ent:subscribed_sensors.map(function(v,k) { wrangler:picoQuery(v.get("subscriptionTx"), "com.tcashcroft.temperature_store", "current_temperature", {})})
-      temperatures
+      // subscribed_temperatures = ent:subscribed_sensors.map(function(v,k) { wrangler:picoQuery(v.get("subscriptionTx"), "com.tcashcroft.temperature_store", "current_temperature", {})})
+      subscribed_temperatures = ent:subscribed_sensors.map(function(v,k){
+        url = (v.get("txHost") + "/sky/cloud/" + v.get("subscriptionTx") + "/com.tcashcroft.temperature_store/current_temperature").klog("GET Url: ")
+        http:get(url, {}){"content"}.decode()
+      })
+      subscribed_temperatures
     }
 
     children_profiles = function() {
       profiles = ent:children.map(function(v,k){wrangler:picoQuery(v.get("eci"), "com.tcashcroft.sensor_profile", "current_profile", {}) })
       profiles
+    }
+
+    subscribed_sensors_profiles = function(){
+      subscribed_profiles = ent:subscribed_sensors.map(function(v,k){
+        wrangler:picoQuery(v.get("subscriptionTx"), "com.tcashcroft.sensor_profile", "current_profile", {}, v.get("txHost"))
+      })
+      subscribed_profiles
     }
 
     getTwilioConfig = function() {
@@ -276,20 +292,6 @@ ruleset com.tcashcroft.manage_sensors {
     }
   }
 
-  // rule accept_sensor_wellknown_eci {
-    // select when sensor sent_wellknown_eci
-      // sensor_name re#(.+)#
-      // wellKnown_eci re#(.+)#
-    // pre {
-      // sensor_name = event:attrs{"sensor_name"}
-      // wellKnown_eci = event:attrs{"wellKnown_eci"}
-    // }
-    // fired {
-      // ent:subscribed_sensors{sensor_name} := {"wellKnown_eci": wellKnown_eci}
-      // raise sensor event "create_subscription" attributes {"sensor_name": sensor_name}
-    // }
-  // }
-
   rule auto_accept_sensor_subscription {
     select when wrangler inbound_pending_subscription_added
       sensor_name re#(.+)#
@@ -303,7 +305,11 @@ ruleset com.tcashcroft.manage_sensors {
     if my_role == "manager" && their_role == "sensor" && name_is_available then noop()
     fired {
       raise wrangler event "pending_subscription_approval" attributes event:attrs
-      ent:subscribed_sensors{sensor_name} := {"subscriptionTx" : event:attrs{"Tx"}}
+      ent:subscribed_sensors{sensor_name} := {
+        "subscriptionTx" : event:attrs{"Tx"},
+        "subscriptionId" : event:attrs{"Id"},
+        "txHost" : event:attrs{"Tx_host"}
+      }
     }
     else {
       raise wrangler event "inbound_rejection" attributes event:attrs.put("name_is_available", name_is_available)
@@ -329,4 +335,133 @@ ruleset com.tcashcroft.manage_sensors {
     }
   }
 
+  rule remove_child {
+    select when sensor unneeded_child
+    pre {
+      child_name = event:attrs{"child_name"}
+      is_present = ent:children >< child_name
+    }
+      if is_present then 
+
+    event:send({
+      "eci": ent:children{child_name}.get("eci"),
+      "eid": "child_deletion_request",
+      "domain": "wrangler",
+      "type": "child_deletion_request",
+    })
+    fired {
+      ent:children := ent:children.delete(child_name)
+    } 
+  }
+
+  rule remove_subscribed_sensor {
+    select when sensor unneeded_sensor
+    pre {
+      sensor_name = event:attrs{"sensor_name"}
+      is_present = ent:subscribed_sensors >< sensor_name
+    }
+    if is_present then noop()
+    fired {
+      raise wrangler event "subscription_cancellation" attributes { "Id": ent:subscribed_sensors{sensor_name}.get("id")}
+      ent:subscribed_sensors := ent:subscribed_sensors.delete(sensor_name)
+    }
+  }
+
+  rule handle_threshold_violation {
+    select when wovyn threshold_violation
+    pre {
+      message = "Temperature threshold exceeded. Threshold: " + event:attrs{"threshold"} + " Temperature: " + event:attrs{"temperature"}
+    }
+
+    twilioSdk:sendMessage(ent:targetPhoneNumber, message)
+  }
+
+  rule update_subscribed_profile {
+    select when sensor subscribed_profile_update_requested
+    pre {
+      apiKey = ent:apiKey
+      sessionId = ent:sessionId
+      phoneNumber = ent:phoneNumber
+      targetPhoneNumber = event:attrs{"targetPhoneNumber"} || ent:targetPhoneNumber
+      name = event:attrs{"name"} || event:attrs{"sensorName"} 
+      location = event:attrs{"location"} || ent:location
+      threshold = event:attrs{"threshold"} || ent:threshold
+      sensorName = event:attrs{"sensorName"}  
+    }
+    event:send({
+      "eci": ent:subscribed_sensors{sensorName}.get("subscriptionTx"),
+      "eid": "full_profile_updated",
+      "domain": "sensor_profile",
+      "type": "full_profile_updated",
+      "attrs": {
+        "apiKey" : apiKey,
+        "sessionId" : sessionId,
+        "phoneNumber" : phoneNumber,
+        "targetPhoneNumber" : targetPhoneNumber,
+        "location" : location,
+        "threshold" : threshold,
+        "name" : name
+      }
+    }, ent:subscribed_sensors{sensorName}.get("txHost"))
+    fired {
+      raise sensor event "child_profile_update_complete" attributes {"new_sensor_name": sensorName}
+    }
+  }
+
+  rule update_child_profile {
+    select when sensor child_profile_update_requested
+    pre {
+      apiKey = ent:apiKey
+      sessionId = ent:sessionId
+      phoneNumber = ent:phoneNumber
+      targetPhoneNumber = event:attrs{"targetPhoneNumber"} || ent:targetPhoneNumber
+      name = event:attrs{"name"} || event:attrs{"sensorName"} 
+      location = event:attrs{"location"} || ent:location
+      threshold = event:attrs{"threshold"} || ent:threshold
+      sensorName = event:attrs{"sensorName"}  
+    }
+    event:send({
+      "eci": ent:children{sensorName}.get("eci"),
+      "eid": "full_profile_updated",
+      "domain": "sensor_profile",
+      "type": "full_profile_updated",
+      "attrs": {
+        "apiKey" : apiKey,
+        "sessionId" : sessionId,
+        "phoneNumber" : phoneNumber,
+        "targetPhoneNumber" : targetPhoneNumber,
+        "location" : location,
+        "threshold" : threshold,
+        "name" : name
+      }
+    }, ent:subscribed_sensors{sensorName}.get("txHost"))
+    fired {
+      raise sensor event "child_profile_update_complete" attributes {"new_sensor_name": sensorName}
+    }
+  }
+
+  rule install_default_profile {
+    select when sensor wovyn_emitter_installed
+    pre {
+      sessionId = ent:sessionId
+      apiKey = ent:apiKey
+      phoneNumber = ent:phoneNumber
+      threshold = event:attrs{"threshold"} || ent:threshold
+      name = event:attrs{"child_name"} || event:attrs{"name"} || "Sensor -1"       
+      targetPhoneNumber = event:attrs{"targetPhoneNumber"} || ent:targetPhoneNumber
+      location = event:attrs{"location"} || ent:location
+    }
+    always {
+      raise sensor event "child_profile_update_requested" attributes {
+        "apiKey": apiKey,
+        "sessionId": sessionId,
+        "phoneNumber": phoneNumber,
+        "targetPhoneNumber": targetPhoneNumber,
+        "name": name,
+        "sensorName": name,
+        "location": location,
+        "threshold": threshold,
+      }
+    }
+  }
 }
