@@ -106,7 +106,7 @@ ruleset com.tcashcroft.sensor_child_base {
       managers_len = managers.length().klog("Managers Length: ")
 
       manager_name = managers.head().klog("Manager Name: ")
-      remaining_managers = managers.slice(1, managers.length())
+      remaining_managers = managers.slice(1, managers.length() - 1)
       manager_exists = (ent:managers >< manager_name).klog("Manager Exists: ")
       violation = event:attrs{"violation"}
     }
