@@ -3,6 +3,7 @@ ruleset com.tcashcroft.sensor_child_base {
     name "Sensor Child Base"
     use module io.picolabs.wrangler alias wrangler
     use module io.picolabs.subscription alias subscription
+    shares managers
   }
 
   global {
@@ -18,6 +19,10 @@ ruleset com.tcashcroft.sensor_child_base {
         "type": "threshold_violation",
         "attrs": attrs
       }, host)
+    }
+
+    managers = function(){
+      ent:managers
     }
   }
 
