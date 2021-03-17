@@ -135,33 +135,8 @@ ruleset com.tcashcroft.manage_sensors {
     }
   }
 
-  rule install_twilio {
-    select when sensor child_base_installed
-    pre {
-      child_name = event:attrs{"child_name"}
-    }
-    event:send({
-      "eci": ent:children{child_name}.get("eci"),
-      "eid": "install_twilio_base_ruleset",
-      "domain": "wrangler",
-      "type": "install_ruleset_request",
-      "attrs": {
-        //"absoluteURL": "https://raw.githubusercontent.com/tcashcroft/rulesets/lab7/twilio.krl",
-        "absoluteURL": "file:///home/tashcrof/workspace/krl/rulesets/twilio.krl",
-        "rid": "twilio",
-        "config": getTwilioConfig(),
-        "name": child_name
-      }
-    })
-    fired {
-      raise sensor event "twilio_base_installed" attributes {"child_name": child_name}
-    } else {
-      raise sensor event "rule_installation_failed" attributes {"child_name": child_name}
-    }
-  }
-
   rule add_wovyn_base_ruleset {
-    select when sensor twilio_base_installed
+    select when sensor child_base_installed
     pre {
       child_name = event:attrs{"child_name"}
     }
@@ -314,25 +289,6 @@ ruleset com.tcashcroft.manage_sensors {
     }
     else {
       raise wrangler event "inbound_rejection" attributes event:attrs.put("name_is_available", name_is_available)
-    }
-  }
-
-  rule test_rule {
-    select when sensor test_rule
-    pre {
-      sensor_name = event:attrs{"sensor_name"}
-    }
-        event:send({
-          "eci": ent:subscribed_sensors{sensor_name}.get("subscriptionTx"),
-          "domain": "wovyn",
-          "name": "new_temperature_reading",
-          "attrs": {
-            "temperature": -17,
-            "timestamp": time:now()
-          }
-        })
-    fired {
-      raise sensor event "test_fired" attributes event:attrs
     }
   }
 
