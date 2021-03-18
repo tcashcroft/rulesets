@@ -336,10 +336,6 @@ ruleset com.tcashcroft.manage_sensors {
   rule update_subscribed_profile {
     select when sensor subscribed_profile_update_requested
     pre {
-      apiKey = ent:apiKey
-      sessionId = ent:sessionId
-      phoneNumber = ent:phoneNumber
-      targetPhoneNumber = event:attrs{"targetPhoneNumber"} || ent:targetPhoneNumber
       name = event:attrs{"name"} || event:attrs{"sensorName"} 
       location = event:attrs{"location"} || ent:location
       threshold = event:attrs{"threshold"} || ent:threshold
@@ -347,31 +343,23 @@ ruleset com.tcashcroft.manage_sensors {
     }
     event:send({
       "eci": ent:subscribed_sensors{sensorName}.get("subscriptionTx"),
-      "eid": "full_profile_updated",
-      "domain": "sensor_profile",
-      "type": "full_profile_updated",
+      "eid": "profile_updated",
+      "domain": "sensor",
+      "type": "profile_updated",
       "attrs": {
-        "apiKey" : apiKey,
-        "sessionId" : sessionId,
-        "phoneNumber" : phoneNumber,
-        "targetPhoneNumber" : targetPhoneNumber,
         "location" : location,
         "threshold" : threshold,
         "name" : name
       }
     }, ent:subscribed_sensors{sensorName}.get("txHost"))
     fired {
-      raise sensor event "child_profile_update_complete" attributes {"new_sensor_name": sensorName}
+      raise sensor event "subscribed_profile_update_complete" attributes {"new_sensor_name": sensorName}
     }
   }
 
   rule update_child_profile {
     select when sensor child_profile_update_requested
     pre {
-      apiKey = ent:apiKey
-      sessionId = ent:sessionId
-      phoneNumber = ent:phoneNumber
-      targetPhoneNumber = event:attrs{"targetPhoneNumber"} || ent:targetPhoneNumber
       name = event:attrs{"name"} || event:attrs{"sensorName"} 
       location = event:attrs{"location"} || ent:location
       threshold = event:attrs{"threshold"} || ent:threshold
@@ -379,14 +367,10 @@ ruleset com.tcashcroft.manage_sensors {
     }
     event:send({
       "eci": ent:children{sensorName}.get("eci"),
-      "eid": "full_profile_updated",
-      "domain": "sensor_profile",
-      "type": "full_profile_updated",
+      "eid": "profile_updated",
+      "domain": "sensor",
+      "type": "profile_updated",
       "attrs": {
-        "apiKey" : apiKey,
-        "sessionId" : sessionId,
-        "phoneNumber" : phoneNumber,
-        "targetPhoneNumber" : targetPhoneNumber,
         "location" : location,
         "threshold" : threshold,
         "name" : name
@@ -400,20 +384,12 @@ ruleset com.tcashcroft.manage_sensors {
   rule install_default_profile {
     select when sensor wovyn_emitter_installed
     pre {
-      sessionId = ent:sessionId
-      apiKey = ent:apiKey
-      phoneNumber = ent:phoneNumber
       threshold = event:attrs{"threshold"} || ent:threshold
       name = event:attrs{"child_name"} || event:attrs{"name"} || "Sensor -1"       
-      targetPhoneNumber = event:attrs{"targetPhoneNumber"} || ent:targetPhoneNumber
       location = event:attrs{"location"} || ent:location
     }
     always {
       raise sensor event "child_profile_update_requested" attributes {
-        "apiKey": apiKey,
-        "sessionId": sessionId,
-        "phoneNumber": phoneNumber,
-        "targetPhoneNumber": targetPhoneNumber,
         "name": name,
         "sensorName": name,
         "location": location,

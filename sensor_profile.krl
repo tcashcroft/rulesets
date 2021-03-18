@@ -33,16 +33,12 @@ ruleset com.tcashcroft.sensor_profile {
     }
     send_directive("new_threshold", {"value" : newThreshold})
     always {
-      raise sensor event "profile_update_complete" attributes {
-        "location" : newLocation,
-        "threshold" : newThreshold,
-        "name" : newName
-      };
       ent:current_profile := {
         "location" : newLocation,
         "threshold" : newThreshold,
         "name" : newName
       };
+      raise sensor event "profile_update_complete" attributes ent:current_profile
     }
   }
 }
