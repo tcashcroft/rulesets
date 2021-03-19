@@ -3,6 +3,7 @@ ruleset com.tcashcroft.sensor_child_base {
     name "Sensor Child Base"
     use module io.picolabs.wrangler alias wrangler
     use module io.picolabs.subscription alias subscription
+    use module com.tcashcroft.temperature_store alias temp_store
     shares managers
   }
 
@@ -80,10 +81,11 @@ ruleset com.tcashcroft.sensor_child_base {
     always {
       manager_name = manager_name(ent:counter)
       ent:counter := ent:counter + 1
-      ent:managers{manager_name} := {
+      ent:managers{event:attrs{"Id"}} := {
         "subscriptionId": event:attrs{"Id"},
         "subscriptionTx": event:attrs{"Tx"},
-        "txHost": event:attrs{"bus"}.get("Tx_host")
+        "txHost": event:attrs{"bus"}.get("Tx_host"),
+        "managerName": manager_name
       }
     }
   }
@@ -121,6 +123,32 @@ ruleset com.tcashcroft.sensor_child_base {
       raise sensor_child_base event "threshold_violation" attributes {"violation": violation, "manager_names": remaining_managers}
     } else {
       raise sensor_child_base event "send_threshold_violation_to_manager_not_sent" attributes event:attrs
+    }
+  }
+
+  rule scatter_gather_sensor_response {
+    select when sensor_base gather_request
+      correlation_identifier re#(.+)#
+    pre {
+      correlation_identifier = event:attrs{"correlation_identifier"}
+      temperature = temp_store:current_temperature()
+      subscription_id = event:attrs{"subscriptionId"}
+      event_type = event:attrs{"event_name"}
+      event_domain = event:attrs{"event_domain"}
+    }
+    event:send({
+      "eci": ent:managers{subscription_id}.get("subscriptionTx"),
+      "eid": "gather_response",
+      "domain": event_domain,
+      "type": event_type,
+      "attrs": {
+        "correlation_identifier": correlation_identifier,
+        "temperature": temperature,
+        "subscription_id": subscription_id
+      }
+  }, ent:managers{subscription_id}.get("txHost"))
+    fired {
+      raise sensor_base event "report_sent" attributes event:attrs
     }
   }
 }

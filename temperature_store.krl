@@ -5,7 +5,7 @@ ruleset com.tcashcroft.temperature_store {
     name "Temperature Store"
     logging on
     shares temperatures, threshold_violations, inrange_temperatures, current_temperature
-    provides temperatures, threshold_violations, inrange_temperatures
+    provides temperatures, threshold_violations, inrange_temperatures, current_temperature
   }
 
   global {

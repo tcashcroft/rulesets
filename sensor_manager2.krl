@@ -11,10 +11,23 @@ ruleset com.tcashcroft.manage_sensors {
       apiKey = meta:rulesetConfig{"apiKey"}
       sessionId = meta:rulesetConfig{"sessionId"}
       phoneNumber = meta:rulesetConfig{"phoneNumber"}
-    shares subscribed_sensors, children, children_temperatures, subscribed_sensors_temperatures, children_profiles, subscribed_sensors_profiles, get_wellKnown_eci 
+    shares all_temperature_reports, temperature_report, subscribed_sensors, children, children_temperatures, subscribed_sensors_temperatures, children_profiles, subscribed_sensors_profiles, get_wellKnown_eci 
   }
 
   global {
+
+    temperature_report = function() {
+      (ent:temperature_report.length() > 4) => 
+      ent:temperature_report.keys().sort("reverse").slice(0,4).map(function(v) {
+        ent:temperature_report{v}.put("timestamp", v)
+      }).sort()
+     | ent:temperature_report
+    }
+
+    all_temperature_reports = function(){
+      ent:temperature_report
+    }
+
     subscribed_sensors = function() {
       ent:subscribed_sensors
     }
@@ -80,6 +93,7 @@ ruleset com.tcashcroft.manage_sensors {
       ent:threshold := meta:rulesetConfig{"threshold"}
       ent:targetPhoneNumber := meta:rulesetConfig{"targetPhoneNumber"}
       ent:location := meta:rulesetConfig{"location"}
+      ent:temperature_report := {}
     }
   }
 
@@ -87,7 +101,7 @@ ruleset com.tcashcroft.manage_sensors {
     select when sensor new_sensor
     pre {
       name_to_use = event:attrs{"new_sensor_name"} || nameFromID(ent:counter)
-      is_valid = ent:sensors >< name_to_use
+      is_valid = ent:children >< name_to_use
     }
     if not is_valid then send_directive("Creating child", {"new_sensor_name": name_to_use})
     fired {
@@ -274,17 +288,19 @@ ruleset com.tcashcroft.manage_sensors {
       my_role = event:attrs{"Rx_role"}.klog("my role: ")
       their_role = event:attrs{"Tx_role"}.klog("their role: ")
       sensor_name = event:attrs{"sensor_name"}.klog("sensor name: ")
-      name_is_available = not (ent:subscribed_sensors >< sensor_name)
+      subscription_id = event:attrs{"Id"}
+      name_is_available = not (ent:subscribed_sensors >< subscription_id)
       temp = event:attrs.put("temp", "temp").klog("Subscription Event Attrs")
     }
     if my_role == "manager" && their_role == "sensor" && name_is_available then noop()
     fired {
       // raise wrangler event "pending_subscription_approval" attributes event:attrs
       raise wrangler event "pending_subscription_approval" attributes {"Id": event:attrs{"Id"}}
-      ent:subscribed_sensors{sensor_name} := {
+      ent:subscribed_sensors{event:attrs{"Id"}} := {
         "subscriptionTx" : event:attrs{"Tx"},
         "subscriptionId" : event:attrs{"Id"},
-        "txHost" : event:attrs{"Tx_host"}
+        "txHost" : event:attrs{"Tx_host"},
+        "sensorName": sensor_name
       }
     }
     else {
@@ -314,13 +330,13 @@ ruleset com.tcashcroft.manage_sensors {
   rule remove_subscribed_sensor {
     select when sensor unneeded_sensor
     pre {
-      sensor_name = event:attrs{"sensor_name"}
-      is_present = ent:subscribed_sensors >< sensor_name
+      subscription_id = event:attrs{"subscription_id"}
+      is_present = ent:subscribed_sensors >< subscription_id
     }
     if is_present then noop()
     fired {
-      raise wrangler event "subscription_cancellation" attributes { "Id": ent:subscribed_sensors{sensor_name}.get("id")}
-      ent:subscribed_sensors := ent:subscribed_sensors.delete(sensor_name)
+      raise wrangler event "subscription_cancellation" attributes { "Id": subscription_id}
+      ent:subscribed_sensors := ent:subscribed_sensors.delete(subscription_id)
     }
   }
 
@@ -336,13 +352,13 @@ ruleset com.tcashcroft.manage_sensors {
   rule update_subscribed_profile {
     select when sensor subscribed_profile_update_requested
     pre {
-      name = event:attrs{"name"} || event:attrs{"sensorName"} 
+      name = event:attrs{"name"}  
       location = event:attrs{"location"} || ent:location
       threshold = event:attrs{"threshold"} || ent:threshold
-      sensorName = event:attrs{"sensorName"}  
+      subscription_id = event:attrs{"subscription_id"}  
     }
     event:send({
-      "eci": ent:subscribed_sensors{sensorName}.get("subscriptionTx"),
+      "eci": ent:subscribed_sensors{subscription_id}.get("subscriptionTx"),
       "eid": "profile_updated",
       "domain": "sensor",
       "type": "profile_updated",
@@ -351,9 +367,9 @@ ruleset com.tcashcroft.manage_sensors {
         "threshold" : threshold,
         "name" : name
       }
-    }, ent:subscribed_sensors{sensorName}.get("txHost"))
+    }, ent:subscribed_sensors{subscription_id}.get("txHost"))
     fired {
-      raise sensor event "subscribed_profile_update_complete" attributes {"new_sensor_name": sensorName}
+      raise sensor event "subscribed_profile_update_complete" attributes {"new_sensor_name": name}
     }
   }
 
@@ -375,7 +391,7 @@ ruleset com.tcashcroft.manage_sensors {
         "threshold" : threshold,
         "name" : name
       }
-    }, ent:subscribed_sensors{sensorName}.get("txHost"))
+    }, ent:children{sensorName}.get("txHost"))
     fired {
       raise sensor event "child_profile_update_complete" attributes {"new_sensor_name": sensorName}
     }
@@ -395,6 +411,71 @@ ruleset com.tcashcroft.manage_sensors {
         "location": location,
         "threshold": threshold,
       }
+    }
+  }
+
+  rule scatter_gather_temperature_report {
+    select when sensor scatter_gather_temperatures
+    pre {
+       correlation_identifier = time:now()
+       sensor_list = ent:subscribed_sensors.keys()
+       sensor_count = ent:subscribed_sensors.keys().length()
+    }
+    noop()
+    fired {
+       ent:temperature_report{correlation_identifier} := ent:temperature_report{correlation_identifier} || {"sensors": sensor_count, "reporting": 0, "temperatures": []}
+       raise sensor event "scatter_gather_sensors" attributes {"correlation_identifier": correlation_identifier, "sensors": sensor_list}  
+    }
+  }
+
+  rule scatter_gather_sensors {
+    select when sensor scatter_gather_sensors
+      correlation_identifier re#(.+)#
+    pre {
+       correlation_identifier = event:attrs{"correlation_identifier"}
+       sensors = event:attrs{"sensors"}
+       sensors_len = sensors.length()
+      
+       subscription_id = sensors.head()
+       remaining_sensors = sensors.slice(1, sensors.length() - 1)
+       sensor_exists = (ent:subscribed_sensors >< subscription_id)
+    }
+    if sensors_len > 0 && sensor_exists then event:send({
+      "eci": ent:subscribed_sensors{subscription_id}.get("subscriptionTx"),
+      "eid": "scatter_gather_sensors",
+      "domain": "sensor_base",
+      "type": "gather_request",
+      "attrs": {
+        "correlation_identifier": correlation_identifier,
+        "event_name": "gather_report",
+        "event_domain": "sensor",
+        "subscriptionId": ent:subscribed_sensors{subscription_id}.get("subscriptionId")
+      }
+    }, ent:subscribed_sensors{subscription_id}.get("txHost"))
+    fired {
+      raise sensor event "scatter_gather_sensors" attributes {"correlation_identifier": correlation_identifier, "sensors": remaining_sensors}
+    }
+  }
+
+  rule gather_reports {
+    select when sensor gather_report
+      correlation_identifier re#(.+)#
+    pre {
+      correlation_identifier = event:attrs{"correlation_identifier"}
+      is_valid = (correlation_identifier.length() > 0).klog("Is Valid?")
+      temperature = event:attrs{"temperature"} || {"message": "No temperature"}
+      subscription_id = event:attrs{"subscription_id"}
+    }
+    if is_valid then noop()
+    fired {
+      currently_reporting = ent:temperature_report{correlation_identifier}.get("reporting").klog("Currently Reporting: ")
+      report = ent:temperature_report.get(correlation_identifier).klog("Temperature Report")
+      updated_report_temperatures = report{"temperatures"}.append({"sensor": subscription_id, "data": temperature}).klog("Updated Report")
+      further_updated_report = report.set("reporting", currently_reporting + 1).set("temperatures", updated_report_temperatures).klog("Further Updated Report")
+      // report{"reporting"} := (report.get("reporting") + 1)
+      //ent:temperature_report{correlation_identifier} := ent:temperature_report{correlation_identifier}.put(subscription_id, temperature)
+      ent:temperature_report{correlation_identifier} := further_updated_report
+      raise sensor event "some_random_event" attributes event:attrs
     }
   }
 }
