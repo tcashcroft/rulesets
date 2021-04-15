@@ -43,8 +43,9 @@ ruleset com.tcashcroft.wovyn_base {
 
     fired {
       raise wovyn event "threshold_violation" attributes {"temperature": event:attrs{"temperature"}, "timestamp": event:attrs{"timestamp"}, "threshold": ent:temperature_threshold}
+    } else {
+      raise wovyn event "no_threshold_violation" attributes {"temperature": event:attrs{"temperature"}, "timestamp": event:attrs{"timestamp"}}
     }
-    
   }
 
   rule updateProfile {

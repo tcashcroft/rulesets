@@ -5,7 +5,7 @@ ruleset com.tcashcroft.gossip {
         use module io.picolabs.wrangler alias wrangler
         use module io.picolabs.subscription alias subscription
         use module com.tcashcroft.temperature_store alias temperature_store
-        shares current_schedule, current_schedule_id, current_temperature, get_wellKnown_eci, get_known_nodes, get_name, get_all_messages, get_seen_messages, who_knows_what, get_temperature_report
+        shares current_schedule, current_schedule_id, current_temperature, get_wellKnown_eci, get_known_nodes, get_name, get_all_messages, get_seen_messages, who_knows_what, get_temperature_report, current_threshold_state, get_threshold_violation_report, violation_count
     }
 
     global {
@@ -40,6 +40,10 @@ ruleset com.tcashcroft.gossip {
         current_temperature = function(){
             temperature_store:current_temperature()
         }
+        
+        current_threshold_state = function() {
+            temperature_store:current_violation_state()
+        }
 
         who_knows_what = function() {
             ent:who_knows_what
@@ -53,13 +57,28 @@ ruleset com.tcashcroft.gossip {
             messageId.split(re#:#)[1]
         }
 
+        violation_count = function() {
+            ent:threshold_count
+        }
+
         get_temperature_report = function() {
-            message_ids = ent:seen_messages.filter(function(v,k){
+            message_ids = ent:seen_messages{"messageA"}.filter(function(v,k){
                 v > 0
             }).map(function(v,k){
                 k + ":" + v
             }).values()
             ent:all_messages.filter(function(message) {
+                message_ids >< message{"MessageID"}
+            })
+        }
+
+        get_threshold_violation_report = function() {
+            message_ids = ent:seen_messages{"messageB"}.filter(function(v,k){
+                v > 0
+            }).map(function(v,k){
+                k + ":" + v
+            }).values()
+            ent:all_messages{"messageB"}.filter(function(message) {
                 message_ids >< message{"MessageID"}
             })
         }
@@ -70,15 +89,47 @@ ruleset com.tcashcroft.gossip {
         always {
             ent:name := random:word() + "-" + random:word()
             ent:sequence_number := 0
+            ent:sequence_number2 := 0
             ent:known_nodes := {}
             ent:current_gossip_schedule := "0 */2 * * * *"
-            ent:all_messages := [] // my state
-            ent:seen_messages := {} // state summary
-            ent:seen_messages{ent:name} := ent:sequence_number
+            ent:all_messages := {
+                "messageA": [],
+                "messageB": []
+            } // my state
+            ent:seen_messages := {
+                "messageA": {},
+                "messageB": {}
+            } // state summary
+            ent:seen_messages{["messageA", ent:name]} := ent:sequence_number
+            ent:seen_messages{["messageB", ent:name]} := ent:sequence_number2
             ent:who_knows_what := {}
+            ent:enabled := true
+            ent:threshold_count := 0
+            ent:my_threshold_state := 0
             // ent:all_seen_messages := {} // state of gossip network
 
             raise gossip event "hearbeat_schedule"
+        }
+    }
+
+    rule gossip_disable {
+        select when gossip disable
+        pre {
+            sched_exists = (not ent:current_schedule_id.isnull())
+            sched_id = ent:current_schedule_id
+        }
+        if sched_exists then schedule:remove(sched_id)
+        always {
+            ent:enabled := false
+        }
+    }
+
+    rule gossip_enable {
+        select when gossip enable
+        noop()
+        fired {
+            ent:enabled := true
+            raise gossip event "heartbeat_schedule"
         }
     }
 
@@ -178,7 +229,9 @@ ruleset com.tcashcroft.gossip {
             nodes_needing_gossip = nodes.map(function(x) {ent:known_nodes{x}}).filter(function(y){
                 name = y.get("name").klog("Name to consider:")
                 their_seen_messages = (ent:who_knows_what{name} || {}).klog("Their Seen Messages")
-                res = (their_seen_messages != ent:seen_messages{name} && ent:seen_messages{name}.length() > 0) || their_seen_messages.length() == 0
+                res = (their_seen_messages != ent:seen_messages{["messageA", name]} && ent:seen_messages{["messageA"]}.length() > 0) 
+                || (their_seen_messages != ent:seen_messages{["messageB", name]} && ent:seen_messages{["messageB"]}.length() > 0)
+                || their_seen_messages.length() == 0
                 res
                 // output = ((their_seen_messages.length() == 0 && ent:seen_messages.length() != 0).klog("sub result") => true | 
                 //   (
@@ -210,17 +263,64 @@ ruleset com.tcashcroft.gossip {
           target re#(.+)#
         pre {
             target = event:attrs{"target"}
-            message_type = random:integer(lower = 1, upper = 10)
+            message_type = random:integer(lower = 1, upper = 13)
             // message_type = 1 // currently only testing seen messages
             // message_type = 8 // now testing rumors
         }
         if message_type > 7 then noop()
         fired {
           // gossip a rumor
-          raise gossip event "rumor" attributes {"name": target}
+          // raise gossip event "rumor" attributes {"name": target}
+          raise gossip event "prepare_message2" attributes {"target": target}
         } else {
           // gossip seen messages
           raise gossip event "seen" attributes {"name": target}
+        }
+    }
+
+    rule additional_message_type {
+        select when gossip prepare_message2
+          target re#(.+)#
+        pre {
+          target = event:attrs{"target"}  
+          message_type = random:integer(lower = 1, upper = 2)
+        }
+        if message_type == 1 then noop()
+        fired {
+            raise gossip event "rumor" attributes {"name": target}
+        } else {
+            raise gossip event "threshold_counter" attributes {"name": target}
+        }
+    }
+
+    rule gossip_send_threshold_counter {
+        select when gossip threshold_counter
+          name re#(.+)#
+        pre {
+            target_node = event:attrs{"name"}
+            is_valid = ent:known_nodes >< target_node
+            target_state = ent:seen_messages{["messageB", target_node]}
+            needed_messages = ent:all_messages{"messageB"}.filter(function(message) {
+                message_node = message{"MessageID"}.split(re#:#)[0]
+                message_sequence = message{"MessageID"}.split(re#:#)[1]
+                target_state{message_node}.isnull() => true | (target_state{message_node}.get("sequenceNumber") < message_sequence)
+            })
+            has_needed_messages = (needed_messages.length() > 0)
+        }
+        if is_valid then event:send({
+            "eci": ent:known_nodes{target_node}.get("subscriptionTx"),
+            "eid": "gossip_threshold",
+            "domain": "gossip",
+            "type": "threshold_received",
+            "attrs": {
+                "name": ent:name,
+                "rumors": needed_messages
+            }
+        })
+        fired {
+            raise gossip event "threshold_sent" attributes {"name": target_node}
+        } else {
+            raise gossip event "threshold_not_sent" attributes {"name": target_node}
         }
     }
 
@@ -242,7 +342,7 @@ ruleset com.tcashcroft.gossip {
             }
         }, ent:known_nodes{target_node}.get("txHost"))
         fired {
-            raise gossip event "seen_sent" attributes {"name": event:attrs{"name"}}
+            raise gossip event "seen_sent" attributes {"name": event:attrs{"name"}, "seen_sent": ent:seen_messages}
         } else {
             raise gossip event "seen_not_sent" attributes {"name": event:attrs{"name"}} 
         }
@@ -252,8 +352,8 @@ ruleset com.tcashcroft.gossip {
         select when gossip rumor
         pre {
             target_node = event:attrs{"name"}
-            target_state = ent:seen_messages{target_node}
-            needed_messages = ent:all_messages.filter(function(message) {
+            target_state = ent:seen_messages{["messageA", target_node]}
+            needed_messages = ent:all_messages{"messageA"}.filter(function(message) {
                 message_node = message{"MessageID"}.split(re#:#)[0]
                 message_sequence = message{"MessageID"}.split(re#:#)[1]
                 target_state{message_node}.isnull() => true | (target_state{message_node}.get("sequenceNumber") < message_sequence)
@@ -286,7 +386,15 @@ ruleset com.tcashcroft.gossip {
         }
         if rando > 9 then noop()
         fired {
-            raise gossip event"update_temperature" attributes {}
+            raise gossip event "update_temperature" attributes {}
+            raise gossip event "update_threshold" attributes {}
+        }
+    }
+
+    rule gossip_update_threshold_state {
+        select when gossip update_threshold
+        pre {
+
         }
     }
 
@@ -295,10 +403,20 @@ ruleset com.tcashcroft.gossip {
         pre {
             temp = current_temperature().klog("CURRENT_TEMPERATURE")
             temperature = current_temperature().get("temperature").klog("TEMPERATURE")
+            violation_state = current_threshold_state();
+            current_state = ent:my_threshold_state
+            changed = (violation_state != current_state)
         }
-        noop()
+        if changed then noop()
         fired {
+            ent:my_threshold_state := ent:my_threshold_state + violation_state
             raise gossip_test event "add_message" attributes {"temperature": temperature, "sensorID": ent:name}
+            raise gossip_test event "add_message2" attributes {"violationState": violation_state, "sensorID": ent:name}
+        }
+        else {
+            raise gossip_test event "add_message" attributes {"temperature": temperature, "sensorID": ent:name}
+            raise gossip_test event "add_message2" attributes {"violationState": violation_state, "sensorID": ent:name}
+            raise gossip_test event "state_unchanged" attributes {}
         }
     }
 
@@ -308,7 +426,7 @@ ruleset com.tcashcroft.gossip {
             received_from = event:attrs{"name"}
             seen_messages = event:attrs{"seen"}
         }
-        noop()
+        if ent:enabled then noop()
         fired {
             ent:who_knows_what{received_from} := seen_messages
             raise gossip event "TESTING_seen_messages_received" attributes {}
@@ -321,10 +439,23 @@ ruleset com.tcashcroft.gossip {
             received_from = event:attrs{"name"}
             new_messages = event:attrs{"rumors"}
         }
-        noop()
+        if ent:enabled then noop()
         fired {
-            ent:all_messages := ent:all_messages.union(new_messages)
+            ent:all_messages{"messageA"} := ent:all_messages{"messageA"}.union(new_messages)
             raise gossip event "process_messages" attributes {"messages": new_messages} 
+        }
+    }
+
+    rule gossip_receive_threshold_message {
+        select when gossip threshold_received
+        pre {
+            received_from = event:attrs{"name"}
+            new_messages = event:attrs{"rumors"}
+        }
+        if ent:enabled then noop()
+        fired {
+            ent:all_messages{"messageB"} := ent:all_messages{"messageB"}.union(new_messages)
+            raise gossip event "process_messages2" attributes {"messages": new_messages}
         }
     }
 
@@ -345,9 +476,32 @@ ruleset com.tcashcroft.gossip {
         noop()
         fired {
             ent:sequence_number := ent:sequence_number + 1
-            ent:all_messages := ent:all_messages.append(message)
-            ent:seen_messages{ent:name} := ent:sequence_number
+            ent:all_messages{"messageA"} := ent:all_messages{"messageA"}.append(message)
+            ent:seen_messages{["messageA", ent:name]} := ent:sequence_number
             raise gossip event "process_messages" attributes {"messages": [message]}    
+        }
+    }
+
+    rule temp_add_message2 {
+        select when gossip_test add_message2
+        pre {
+            violation_state = event:attrs{"violationState"}
+            sensor = event:attrs{"sensorID"}
+            timestamp = time:now()
+            message_id = ent:name + ":" + (ent:sequence_number2 + 1)
+            message = {
+                "ViolationState": violation_state,
+                "SensorID": sensor,
+                "Timestamp": timestamp,
+                "MessageID": message_id
+            }
+        }
+        noop()
+        fired {
+            ent:sequence_number2 := ent:sequence_number2 + 1
+            ent:all_messages{"messageB"} := ent:all_messages{"messageB"}.append(message)
+            ent:seen_messages{["messageB", ent:name]} := ent:sequence_number2
+            raise gossip event "process_messages2" attributes {"messages": [message]}
         }
     }
     
@@ -356,9 +510,18 @@ ruleset com.tcashcroft.gossip {
         noop()
         fired {
             ent:sequence_number := 0
-            ent:all_messages := [] // my state
-            ent:seen_messages := {} // my state
+            ent:all_messages := {
+                "messageA": [],
+                "messageB": []
+            } // my state
+            ent:seen_messages := {
+                "messageA": {},
+                "messageB": {}
+            } // my state
             ent:who_knows_what := {}
+            ent:enabled := true
+            ent:threshold_counter := 0
+            ent:my_threshold_state := 0
         }
     }
 
@@ -382,7 +545,7 @@ ruleset com.tcashcroft.gossip {
             remaining_messages = messages.slice(1, length - 1)
             message_node = get_node(message{"MessageID"})
             message_sequence = get_sequence(message{"MessageID"})
-            is_greater = ent:seen_messages{message_node} < message_sequence
+            is_greater = ent:seen_messages{["messageA", message_node]} < message_sequence
         }
         if length > 0 then noop()
         fired {
@@ -392,21 +555,77 @@ ruleset com.tcashcroft.gossip {
         }
     }
 
+    rule process_messages2 {
+        select when gossip process_messages2
+        pre {
+            messages = event:attrs{"messages"}
+            message = messages.head() || {}
+            length = messages.length()
+            remaining_messages = messages.slice(1, length - 1)
+            message_node = get_node(message{"MessageID"})
+            message_sequence = get_sequence(message{"MessageID"})
+            is_greater = ent:seen_messages{["messageB", message_node]} < message_sequence
+            count_change = message{"ViolationState"}
+        }
+        if length > 0 then noop()
+        fired {
+            ent:threshold_counter := ent:threshold_counter + count_change
+            raise gossip event "update_seen2" attributes {"messages": remaining_messages, "node": message_node, "sequence": message_sequence}
+        } else {
+            raise gossip event "messages_processed2" attributes {}
+        }
+    }
+
     rule update_seen {
         select when gossip update_seen
         pre {
             remaining_messages = event:attrs{"messages"}
             node = event:attrs{"node"}
             sequence = event:attrs{"sequence"}
-            has_seen_entry = ent:seen_messages >< node
+            has_seen_entry = ent:seen_messages{"messageA"} >< node && ent:seen_messages{"messageB"} >< node
         }
         if has_seen_entry then noop()
         fired {
-            ent:seen_messages{node} := sequence
+            ent:seen_messages{["messageA", node]} := sequence
             raise gossip event "process_individual_message" attributes {"messages": remaining_messages, "node": node, "sequence": sequence}
         } else {
-            ent:seen_messages{node} := 0
+            ent:seen_messages{["messageA", node]} := 0
             raise gossip event "process_individual_message" attributes {"messages": remaining_messages, "node": node, "sequence": sequence}
+        }
+    }
+
+    rule update_seen2 {
+        select when gossip update_seen2
+        pre {
+            remaining_messages = event:attrs{"messages"}
+            node = event:attrs{"node"}
+            sequence = event:attrs{"sequence"}
+            has_seen_entry = ent:seen_messages{"messageB"} >< node && ent:seen_messages{"messageA"} >< node
+        }
+        if has_seen_entry then noop()
+        fired {
+            ent:seen_messages{["messageB", node]} := sequence
+            raise gossip event "process_individual_message2" attributes {"messages": remaining_messages, "node": node, "sequence": sequence}
+        } else {
+            ent:seen_messages{["messageB", node]} := 0
+            raise gossip event "process_individual_message2" attributes {"messages": remaining_messages, "node": node, "sequence": sequence}
+        }
+    }
+
+    rule process_message2 {
+        select when gossip process_individual_message2
+        pre {
+            messages = event:attrs{"messages"}
+            node = event:attrs{"node"}
+            sequence = event:attrs{"sequence"}
+            is_next_sequence = ent:seen_messages{["messageB", node]} == sequence - 1
+        }
+        if is_next_sequence then noop()
+        fired {
+            ent:seen_messages{["messageB", node]} := sequence
+            raise gossip event "process_messages" attributes {"messages": messages}
+        } else {
+            raise gossip event "process_messages" attributes {"messages": messages}
         }
     }
 
@@ -416,16 +635,15 @@ ruleset com.tcashcroft.gossip {
             messages = event:attrs{"messages"}
             node = event:attrs{"node"}
             sequence = event:attrs{"sequence"}
-            is_next_sequence = ent:seen_messages{node} == sequence - 1
+            is_next_sequence = ent:seen_messages{["messageA", node]} == sequence - 1
         }
         if is_next_sequence then noop()
         fired {
-            ent:seen_messages{node} := sequence
+            ent:seen_messages{["messageA", node]} := sequence
             raise gossip event "process_messages" attributes {"messages": messages}
         } else {
             raise gossip event "process_messages" attributes {"messages": messages}
         }
-    
     }
 
     

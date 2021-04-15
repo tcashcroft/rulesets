@@ -4,14 +4,18 @@ ruleset com.tcashcroft.temperature_store {
   meta {
     name "Temperature Store"
     logging on
-    shares temperatures, threshold_violations, inrange_temperatures, current_temperature
-    provides temperatures, threshold_violations, inrange_temperatures, current_temperature
+    shares temperatures, threshold_violations, inrange_temperatures, current_temperature, current_violation_state
+    provides temperatures, threshold_violations, inrange_temperatures, current_temperature, current_violation_state
   }
 
   global {
 
     current_temperature = function() {
       ent:current_temperature
+    }
+
+    current_violation_state = function() {
+      ent:violation_state
     }
 
     temperatures = function() {
@@ -45,6 +49,7 @@ ruleset com.tcashcroft.temperature_store {
       ent:temperatures := []
       ent:violations := []
       ent:current_temperature := null
+      ent:violation_state := 0 
       raise temperature_store event "initialized"
     }
   }
@@ -61,10 +66,35 @@ ruleset com.tcashcroft.temperature_store {
 
   rule collect_threshold_violations {
     select when wovyn threshold_violation
-
-    always {
+    pre {
+      current_violation_state = ent:violation_state
+      new_state = 1
+      changed = (new_state != current_violation_state)
+    }
+    if changed then noop()
+    fired {
+      ent:violation_state := new_state
       ent:violations := ent:violations.append({"threshold": event:attrs{"threshold"}, "temperature": event:attrs{"temperature"}, "timestamp": event:attrs{"timestamp"}}).klog("Adding temperature to store")
       raise temperature_store event "violation_received"
+    } else {
+      ent:violation_state := 0
+      ent:violations := ent:violations.append({"threshold": event:attrs{"threshold"}, "temperature": event:attrs{"temperature"}, "timestamp": event:attrs{"timestamp"}}).klog("Adding temperature to store")
+      raise temperature_store event "violation_received"
+    }
+  }
+
+  rule clear_threshold_violation {
+    select when wovyn no_threshold_violation
+    pre {
+      current_state = ent:current_violation_state
+      new_state = -1
+      changed = (current_state != new_state)
+    }
+    if changed then noop()
+    fired {
+      ent:violation_state := -1
+    } else {
+      ent:violation_state := 0
     }
   }
 
